@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Public Assistance Explorer</title>
+<meta name="description" content="Search, filter, total and export every FEMA Public Assistance dataset on OpenFEMA, live.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: a working desk. Dataset tabs across the top, a filter rail on the left,
+   the record table on the right, and a detail drawer that slides over from the edge. */
+:root {
+  --bg: #f5f7f8;
+  --panel: #ffffff;
+  --sunk: #edf1f3;
+  --line: #d7dee2;
+  --ink: #15212a;
+  --ink-2: #4a5a66;
+  --ink-3: #6f7f8a;
+  --accent: #0b5f86;
+  --accent-ink: #ffffff;
+  --accent-soft: #e1eef5;
+  --bar: #2f7fae;
+  --warn: #9a5b00;
+  --bad: #b3261e;
+  --bad-soft: #fbe9e7;
+  --shadow: 0 8px 30px rgba(15, 35, 50, .14);
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f161b; --panel: #151f26; --sunk: #1b2730; --line: #2a3943;
+    --ink: #e4ecf0; --ink-2: #a9b8c2; --ink-3: #82939e;
+    --accent: #5fb3dc; --accent-ink: #06131b; --accent-soft: #17303e; --bar: #4f9fcb;
+    --warn: #e0a54a; --bad: #f2867c; --bad-soft: #3a1f1d; --shadow: 0 8px 30px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f161b; --panel: #151f26; --sunk: #1b2730; --line: #2a3943;
+  --ink: #e4ecf0; --ink-2: #a9b8c2; --ink-3: #82939e;
+  --accent: #5fb3dc; --accent-ink: #06131b; --accent-soft: #17303e; --bar: #4f9fcb;
+  --warn: #e0a54a; --bad: #f2867c; --bad-soft: #3a1f1d; --shadow: 0 8px 30px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.45 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+a { color: var(--accent); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.num, td.n { font-variant-numeric: tabular-nums; }
+
+header.top { max-width: 1480px; margin: 0 auto; padding-block: 22px 10px; display: flex; flex-wrap: wrap; gap: 6px 24px; align-items: baseline; justify-content: space-between; }
+header.top h1 { font: 700 26px/1.1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+header.top h1 small { font: 500 12px var(--mono); color: var(--ink-3); letter-spacing: .06em; text-transform: uppercase; margin-left: 10px; }
+header.top p { margin: 0; color: var(--ink-2); max-width: 70ch; }
+
+nav.tabs { max-width: 1480px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; padding-block: 8px 14px; }
+.tab { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; display: grid; gap: 2px; }
+.tab:hover { border-color: var(--accent); }
+.tab b { font: 600 15px/1.2 var(--display); letter-spacing: .01em; }
+.tab span { font: 12px var(--mono); color: var(--ink-3); }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tab[aria-selected="true"] span { color: inherit; opacity: .85; }
+
+main { max-width: 1480px; margin: 0 auto; display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+aside.rail { padding: 14px; display: grid; gap: 14px; position: sticky; top: 12px; }
+@media (max-width: 900px) { aside.rail { position: static; } }
+.rail h2, .results h2, .sum h2 { font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.field { display: grid; gap: 4px; }
+.field label { font-weight: 500; font-size: 13px; }
+.field .hint { color: var(--ink-3); font-size: 12px; }
+input[type=text], input[type=number], input[type=date], select {
+  width: 100%; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
+}
+input:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.cond { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; background: var(--sunk); border-radius: 6px; padding: 8px; }
+.cond .ops { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 9fr); gap: 6px; grid-column: 1 / -1; }
+.cond .x { border: 0; background: none; cursor: pointer; color: var(--ink-3); font-size: 18px; line-height: 1; padding: 0 4px; }
+.cond .x:hover { color: var(--bad); }
+
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 7px 12px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); color: var(--accent-ink); }
+.btn.link { border: 0; background: none; padding: 4px 0; color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: default; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+section.results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.bar { padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+.count { font: 600 22px/1 var(--display); }
+.count small { font: 13px var(--body); color: var(--ink-2); margin-left: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--accent-soft); color: var(--ink); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.chip button { border: 0; background: none; cursor: pointer; color: var(--ink-3); font-size: 15px; line-height: 1; padding: 0 4px; }
+.apiurl { font: 12px/1.4 var(--mono); color: var(--ink-2); word-break: break-all; padding: 8px 14px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
+.apiurl code { flex: 1; min-width: 0; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { position: sticky; top: 0; background: var(--sunk); font: 600 11px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; cursor: pointer; user-select: none; }
+th.nosort { cursor: default; }
+th[aria-sort] { color: var(--accent); }
+th .arr { margin-left: 4px; }
+td { max-width: 340px; }
+td.n { text-align: right; white-space: nowrap; font-family: var(--mono); font-size: 12.5px; }
+td.d { white-space: nowrap; }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: var(--accent-soft); }
+.empty { padding: 40px 16px; text-align: center; color: var(--ink-2); }
+.err { background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 12px 14px; }
+.loading { opacity: .5; transition: opacity .15s; }
+.pager { padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; color: var(--ink-2); }
+.pager .actions { align-items: center; }
+
+details.about { padding: 0; }
+details.about summary { cursor: pointer; padding: 12px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 10px; }
+details.about summary::after { content: "Show"; font: 500 12px var(--mono); color: var(--accent); }
+details.about[open] summary::after { content: "Hide"; }
+.aboutbody { padding: 0 14px 14px; display: grid; gap: 12px; }
+.desc { color: var(--ink-2); max-width: 90ch; white-space: pre-line; }
+.fieldlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 16px; font-size: 13px; }
+.fieldlist div { min-width: 0; }
+.fieldlist code { font: 12px var(--mono); color: var(--accent); }
+.fieldlist p { margin: 2px 0 0; color: var(--ink-2); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 12px var(--mono); color: var(--ink-3); }
+
+.sum { padding: 14px; display: grid; gap: 12px; }
+.sum .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end; }
+.kpis { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.kpi b { display: block; font: 600 22px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.kpi span { color: var(--ink-2); font-size: 12px; }
+.bars { display: grid; gap: 4px; }
+.brow { display: grid; grid-template-columns: minmax(90px, 28%) minmax(0, 1fr); gap: 10px; align-items: center; border: 0; background: none; text-align: left; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+.brow:hover { background: var(--accent-soft); }
+.brow .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.brow .track { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.brow .fill { height: 14px; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; }
+.brow .val { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.progress { font: 12px var(--mono); color: var(--ink-2); }
+
+.scrim { position: fixed; inset: 0; background: rgba(10, 20, 28, .35); z-index: 20; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: var(--shadow); z-index: 21; display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.drawer header { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
+.drawer header h3 { margin: 0; font: 600 18px/1.25 var(--display); text-wrap: balance; }
+.drawer header p { margin: 2px 0 0; color: var(--ink-3); font: 12px var(--mono); }
+.drawer .body { overflow-y: auto; padding: 14px 16px; display: grid; gap: 16px; align-content: start; }
+.kv { display: grid; grid-template-columns: minmax(120px, 40%) minmax(0, 1fr); gap: 0; font-size: 13px; }
+.kv dt, .kv dd { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.kv dt { color: var(--ink-2); padding-right: 10px; }
+.kv dd { word-break: break-word; }
+.kv dd.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.xlinks { display: grid; gap: 8px; }
+.xlinks h4 { margin: 0; font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.boot { max-width: 1480px; margin: 40px auto; color: var(--ink-2); }
+footer { max-width: 1480px; margin: 24px auto 0; color: var(--ink-3); font-size: 12px; }
+@media (prefers-reduced-motion: no-preference) { .drawer { animation: slide .18s ease-out; } @keyframes slide { from { transform: translateX(24px); opacity: .6; } } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Public Assistance Explorer <small>OpenFEMA · live</small></h1>
+  <p>Search every FEMA Public Assistance dataset: who applied, which projects were funded, what was obligated and which decisions were appealed.</p>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist" aria-label="Datasets"></nav>
+<div class="boot" id="boot">Loading the dataset catalog from OpenFEMA…</div>
+
+<main id="app" hidden>
+  <aside class="rail panel" aria-label="Filters">
+    <h2>Filter</h2>
+    <div class="field">
+      <label for="q">Search names and titles</label>
+      <input id="q" type="text" placeholder="e.g. school district" autocomplete="off">
+      <div class="hint" id="qhint"></div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="dis">Disaster number</label>
+        <input id="dis" type="text" inputmode="numeric" placeholder="4834, 4673">
+      </div>
+      <div class="field" id="stateWrap">
+        <label for="st">State</label>
+        <select id="st"><option value="">Any</option></select>
+      </div>
+    </div>
+    <div class="field" id="dateWrap">
+      <label for="d1" id="dateLbl">Date</label>
+      <div class="row2">
+        <input id="d1" type="date" aria-label="From">
+        <input id="d2" type="date" aria-label="Through">
+      </div>
+    </div>
+    <div class="field" id="amtWrap">
+      <label for="a1" id="amtLbl">Amount</label>
+      <div class="row2">
+        <input id="a1" type="number" min="0" step="1000" placeholder="At least $">
+        <input id="a2" type="number" min="0" step="1000" placeholder="At most $">
+      </div>
+    </div>
+    <div class="field">
+      <label>More conditions</label>
+      <div id="conds" style="display:grid;gap:8px"></div>
+      <div class="actions"><button class="btn link" id="addCond" type="button">+ Add a condition on any field</button></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="run" type="button">Search</button>
+      <button class="btn" id="reset" type="button">Clear filters</button>
+    </div>
+    <div class="field">
+      <label for="cols">Columns</label>
+      <select id="cols" multiple size="7" aria-describedby="colhint"></select>
+      <div class="hint" id="colhint">Ctrl/⌘-click to pick several.</div>
+    </div>
+  </aside>
+
+  <section class="results">
+    <div class="panel">
+      <div class="bar">
+        <div><div class="count" id="count">…</div></div>
+        <div class="chips" id="chips"></div>
+        <div class="actions">
+          <button class="btn" id="exportBtn" type="button">Download CSV</button>
+        </div>
+      </div>
+      <div class="apiurl"><code id="apiurl"></code><button class="btn link" id="copyUrl" type="button">Copy API link</button></div>
+    </div>
+
+    <div class="panel" id="tablePanel">
+      <div class="tablewrap" id="tablewrap"></div>
+      <div class="pager">
+        <span id="pageInfo"></span>
+        <div class="actions">
+          <label for="size" class="hint">Rows</label>
+          <select id="size" style="width:auto"><option>25</option><option selected>50</option><option>100</option><option>250</option></select>
+          <button class="btn" id="prev" type="button">‹ Prev</button>
+          <button class="btn" id="next" type="button">Next ›</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel sum">
+      <h2>Add it up</h2>
+      <div class="controls">
+        <div class="field"><label for="sumField">Total of</label><select id="sumField"></select></div>
+        <div class="field"><label for="grpField">Grouped by</label><select id="grpField"></select></div>
+        <div class="actions"><button class="btn primary" id="sumBtn" type="button">Add up all matches</button><button class="btn" id="sumStop" type="button" hidden>Stop</button></div>
+      </div>
+      <div class="progress" id="sumProg">OpenFEMA returns rows, not totals, so this pages through every matching record in your browser (up to 300,000 rows).</div>
+      <div id="sumOut"></div>
+    </div>
+
+    <details class="panel about" id="about">
+      <summary id="aboutTitle">About this dataset</summary>
+      <div class="aboutbody">
+        <div class="meta" id="aboutMeta"></div>
+        <div class="desc" id="aboutDesc"></div>
+        <div class="fieldlist" id="aboutFields"></div>
+      </div>
+    </details>
+  </section>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-label="Record detail">
+  <header><div><h3 id="dTitle"></h3><p id="dSub"></p></div><button class="btn" id="dClose" type="button">Close</button></header>
+  <div class="body" id="dBody"></div>
+</aside>
+
+<footer>Data: OpenFEMA (fema.gov/about/openfema), refreshed by FEMA daily or weekly. This is an independent tool, not a FEMA product. Figures are as FEMA reports them; check records before you rely on them.</footer>
+
+<script>
+"use strict";
+const API = "https://www.fema.gov/api/open";
+
+// Plain-language names, one-line descriptions and sensible defaults for the PA datasets.
+// Any new PA dataset FEMA adds still appears, using its catalog title and generic defaults.
+const PROFILE = {
+  PublicAssistanceFundedProjectsDetails: { short: "Funded projects", blurb: "Every obligated project worksheet: what it pays for, damage category, cost and federal share.",
+    cols: ["disasterNumber","declarationDate","incidentType","stateAbbreviation","county","applicationTitle","damageCategoryDescrip","projectSize","projectStatus","projectAmount","federalShareObligated","lastObligationDate"],
+    sort: ["lastObligationDate","desc"], search: ["applicationTitle","county"], date: "lastObligationDate", amount: "federalShareObligated", group: "stateAbbreviation" },
+  PublicAssistanceGrantAwardActivities: { short: "Grant awards", blurb: "Each obligation on a project worksheet, version by version, with eligibility and funding status.",
+    cols: ["disasterNumber","declarationTitle","stateAbbreviation","county","applicantName","projectTitle","damageCategoryCode","federalShareObligated","dateObligated","versionNumber","fundingStatus"],
+    sort: ["dateObligated","desc"], search: ["applicantName","projectTitle"], date: "dateObligated", amount: "federalShareObligated", group: "applicantName" },
+  PublicAssistanceFundedProjectsSummaries: { short: "Applicant totals", blurb: "Number of projects and federal dollars obligated, per applicant and disaster.",
+    cols: ["disasterNumber","declarationDate","incidentType","state","county","applicantName","educationApplicant","numberOfProjects","federalObligatedAmount"],
+    sort: ["declarationDate","desc"], search: ["applicantName","county"], date: "declarationDate", amount: "federalObligatedAmount", group: "state" },
+  PublicAssistanceApplicantsProgramDeliveries: { short: "Program delivery", blurb: "Where each applicant stands in the process, with damage, project counts and cost by phase.",
+    cols: ["disasterNumber","declarationTitle","stateCode","applicantName","applicantType","isPnp","applicantStatus","applicantProcessStatus","totalAppDamageCost","currentProjectCost","federalShareObligated"],
+    sort: ["declarationDate","desc"], search: ["applicantName","declarationTitle","countyApplicantJurisdiction"], date: "declarationDate", amount: "federalShareObligated", group: "applicantType" },
+  PublicAssistanceApplicants: { short: "Applicants", blurb: "Who applied for Public Assistance in each disaster, with mailing address.",
+    cols: ["disasterNumber","state","applicantName","city","zipCode","applicantId"],
+    sort: ["disasterNumber","desc"], search: ["applicantName","city"], date: null, amount: null, group: "state" },
+  PublicAssistanceSecondAppealsTracker: { short: "Second appeals", blurb: "Appeals of Public Assistance decisions at FEMA headquarters, with status and key dates.",
+    cols: ["region","disasterNumber","recipient","appellant","pwgmpNumber","status","hqReceivedDate","decisionSignedDate"],
+    sort: ["hqReceivedDate","desc"], search: ["appellant"], date: "hqReceivedDate", amount: null, group: "status" },
+};
+const ORDER = Object.keys(PROFILE);
+const STATES = [["AL","Alabama"],["AK","Alaska"],["AS","American Samoa"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["DC","District of Columbia"],["FM","Federated States of Micronesia"],["FL","Florida"],["GA","Georgia"],["GU","Guam"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MH","Marshall Islands"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["MP","Northern Mariana Islands"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PW","Palau"],["PA","Pennsylvania"],["PR","Puerto Rico"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VI","Virgin Islands"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
+const HIDE = new Set(["hash"]);
+const META_COLS = new Set(["id","lastRefresh","hash"]);
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const nf = new Intl.NumberFormat("en-US");
+const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const money2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
+const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
+let DATASETS = [];            // [{name, version, title, webService, ...}]
+let FIELDS = {};              // name -> [{name,title,description,kind,type,searchable}]
+const S = { ds: null, q: "", dis: "", st: "", d1: "", d2: "", a1: "", a2: "", conds: [], sort: null, page: 0, size: 50, cols: null };
+let lastCount = 0, reqSeq = 0, sumAbort = null;
+
+function kindOf(t) {
+  t = (t || "").toLowerCase();
+  if (/int|decimal|numeric|float|double|real/.test(t)) return "number";
+  if (/date|time/.test(t)) return "date";
+  if (t === "boolean") return "bool";
+  return "text";
+}
+const isMoney = (f) => f && f.kind === "number" && /decimal/.test(f.type);
+const ds = () => DATASETS.find(d => d.name === S.ds);
+const prof = () => PROFILE[S.ds] || {};
+const fields = () => FIELDS[S.ds] || [];
+const fld = (n) => fields().find(f => f.name === n);
+
+async function getJSON(url, signal) {
+  for (let i = 0; i < 3; i++) {
+    let r;
+    try { r = await fetch(url, { signal }); }
+    catch (e) { if (e.name === "AbortError") throw e; if (i === 2) throw new Error("Couldn't reach OpenFEMA. Check your connection and try again."); await new Promise(res => setTimeout(res, 800 * (i + 1))); continue; }
+    if (r.ok) return r.json();
+    let msg = `OpenFEMA answered ${r.status}.`;
+    try { const j = await r.json(); const e = Array.isArray(j.error) ? j.error[0] : j; msg = (e.message || e.error || msg); } catch {}
+    if (r.status >= 500 && i < 2) { await new Promise(res => setTimeout(res, 800 * (i + 1))); continue; }
+    throw new Error(msg);
+  }
+}
+
+/* ---------- OData query building ---------- */
+const q1 = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+function lit(f, v) {
+  if (f.kind === "number") { const n = Number(String(v).replace(/[$,\s]/g, "")); if (!isFinite(n)) throw new Error(`"${v}" isn't a number for ${f.title}.`); return String(n); }
+  if (f.kind === "bool") return v === "true" || v === true ? "true" : "false";
+  return q1(v);
+}
+function caseVariants(s) {
+  const t = s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return [...new Set([s, s.toUpperCase(), s.toLowerCase(), t])];
+}
+function nextDay(d) { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); }
+function condExpr(c) {
+  const f = fld(c.field); if (!f || c.value === "" || c.value == null) return null;
+  const n = f.name;
+  switch (c.op) {
+    case "contains": return "(" + caseVariants(c.value).map(v => `contains(${n},${q1(v)})`).join(" or ") + ")";
+    case "startswith": return "(" + caseVariants(c.value).map(v => `startswith(${n},${q1(v)})`).join(" or ") + ")";
+    case "in": { const vals = String(c.value).split(",").map(s => s.trim()).filter(Boolean); if (!vals.length) return null; return `${n} in (${vals.map(v => lit(f, v)).join(",")})`; }
+    case "on": return `(${n} ge ${q1(c.value)} and ${n} lt ${q1(nextDay(c.value))})`;
+    case "before": return `${n} lt ${q1(c.value)}`;
+    case "onafter": return `${n} ge ${q1(c.value)}`;
+    case "through": return `${n} lt ${q1(nextDay(c.value))}`;
+    default: return `${n} ${c.op} ${lit(f, c.value)}`;
+  }
+}
+function stateField() {
+  for (const n of ["stateAbbreviation", "stateCode", "recipient"]) if (fld(n)) return { name: n, abbr: true };
+  for (const n of ["state", "stateName"]) if (fld(n)) return { name: n, abbr: false };
+  return null;
+}
+function allConds() {
+  const out = [], p = prof();
+  if (S.dis.trim() && fld("disasterNumber")) out.push({ field: "disasterNumber", op: "in", value: S.dis, label: "Disaster " + S.dis });
+  const sf = stateField();
+  if (S.st && sf) { const nm = (STATES.find(s => s[0] === S.st) || [])[1]; out.push({ field: sf.name, op: "eq", value: sf.abbr ? S.st : nm, label: nm }); }
+  const df = p.date && fld(p.date) ? p.date : null;
+  if (df && S.d1) out.push({ field: df, op: "onafter", value: S.d1, label: `${fld(df).title} from ${fmtDate(S.d1)}` });
+  if (df && S.d2) out.push({ field: df, op: "through", value: S.d2, label: `${fld(df).title} through ${fmtDate(S.d2)}` });
+  const af = p.amount && fld(p.amount) ? p.amount : null;
+  if (af && S.a1 !== "") out.push({ field: af, op: "ge", value: S.a1, label: `${fld(af).title} ≥ ${money.format(S.a1)}` });
+  if (af && S.a2 !== "") out.push({ field: af, op: "le", value: S.a2, label: `${fld(af).title} ≤ ${money.format(S.a2)}` });
+  S.conds.forEach((c, i) => { if (fld(c.field) && c.value !== "") out.push({ ...c, idx: i, label: condLabel(c) }); });
+  return out;
+}
+function searchFields() {
+  const p = prof();
+  const list = (p.search || []).filter(n => fld(n));
+  return list.length ? list : fields().filter(f => f.kind === "text" && f.searchable && /name|title/i.test(f.name)).map(f => f.name);
+}
+function buildFilter() {
+  const parts = allConds().map(condExpr).filter(Boolean);
+  const q = S.q.trim();
+  if (q) {
+    const sf = searchFields();
+    if (sf.length) parts.push("(" + sf.flatMap(n => caseVariants(q).map(v => `contains(${n},${q1(v)})`)).join(" or ") + ")");
+  }
+  return parts.join(" and ");
+}
+function queryURL(extra = {}) {
+  const d = ds(); const params = [];
+  const filter = buildFilter();
+  if (filter) params.push("$filter=" + encodeURIComponent(filter));
+  if (S.sort) params.push("$orderby=" + encodeURIComponent(S.sort[0] + " " + S.sort[1]));
+  for (const [k, v] of Object.entries(extra)) params.push(k + "=" + encodeURIComponent(v));
+  return d.webService + (params.length ? "?" + params.join("&") : "");
+}
+
+/* ---------- formatting ---------- */
+function fmtDate(v) {
+  if (!v) return "";
+  const s = String(v).slice(0, 10); const d = new Date(s + "T00:00:00Z");
+  if (isNaN(d)) return String(v);
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+}
+function fmt(f, v, full) {
+  if (v === null || v === undefined || v === "") return "";
+  if (!f) return String(v);
+  if (f.kind === "bool") return v ? "Yes" : "No";
+  if (f.kind === "date") return /time/.test(f.type) && full ? fmtDate(v) + (String(v).slice(11, 19) !== "00:00:00" ? " " + String(v).slice(11, 16) + " UTC" : "") : fmtDate(v);
+  if (isMoney(f)) return (full ? money2 : money).format(v);
+  if (f.kind === "number" && !/disasterNumber|pwNumber|Id|region|versionNumber/i.test(f.name)) return nf.format(v);
+  return String(v);
+}
+const cellClass = (f) => !f ? "" : (f.kind === "number" ? "n" : f.kind === "date" ? "d" : "");
+
+/* ---------- state <-> URL hash ---------- */
+function saveHash() {
+  const o = { ds: S.ds };
+  for (const k of ["q","dis","st","d1","d2","a1","a2"]) if (S[k] !== "") o[k] = S[k];
+  if (S.conds.length) o.c = S.conds;
+  if (S.sort) o.s = S.sort;
+  if (S.page) o.p = S.page;
+  if (S.size !== 50) o.n = S.size;
+  if (S.cols) o.cols = S.cols;
+  const h = "#" + encodeURIComponent(JSON.stringify(o));
+  if (location.hash !== h) history.replaceState(null, "", h);
+  try { localStorage.setItem("paexplorer.last", h); } catch {}
+}
+function loadHash() {
+  let h = location.hash.slice(1);
+  if (!h) { try { h = (localStorage.getItem("paexplorer.last") || "").slice(1); } catch {} }
+  if (!h) return false;
+  try {
+    const o = JSON.parse(decodeURIComponent(h));
+    if (!DATASETS.some(d => d.name === o.ds)) return false;
+    setDataset(o.ds, true);
+    for (const k of ["q","dis","st","d1","d2","a1","a2"]) S[k] = o[k] ?? "";
+    S.conds = Array.isArray(o.c) ? o.c : [];
+    S.sort = o.s || S.sort; S.page = o.p || 0; S.size = o.n || 50; S.cols = o.cols || null;
+    return true;
+  } catch { return false; }
+}
+
+/* ---------- boot ---------- */
+async function boot() {
+  try {
+    const [cat, fl] = await Promise.all([
+      getJSON(`${API}/v1/DataSets?$filter=${encodeURIComponent("startswith(name,'PublicAssistance')")}&$top=200&$metadata=off`),
+      getJSON(`${API}/v1/DataSetFields?$filter=${encodeURIComponent("startswith(openFemaDataSet,'PublicAssistance')")}&$top=2000&$metadata=off`),
+    ]);
+    const now = Date.now(), best = {};
+    for (const d of cat.DataSets) {
+      const dep = d.depDate && Date.parse(d.depDate) < now;
+      if (dep) continue;
+      if (!best[d.name] || Number(d.version) > Number(best[d.name].version)) best[d.name] = d;
+    }
+    DATASETS = Object.values(best).sort((a, b) => {
+      const ia = ORDER.indexOf(a.name), ib = ORDER.indexOf(b.name);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.title.localeCompare(b.title);
+    });
+    for (const d of DATASETS) {
+      FIELDS[d.name] = fl.DataSetFields
+        .filter(f => f.openFemaDataSet === d.name && String(f.datasetVersion) === String(d.version) && !HIDE.has(f.name))
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map(f => ({ name: f.name, title: f.title || f.name, description: f.description || "", type: f.type, kind: kindOf(f.type), searchable: f.isSearchable !== false }));
+    }
+    if (!DATASETS.length) throw new Error("OpenFEMA's catalog returned no Public Assistance datasets.");
+    renderTabs();
+    $("boot").hidden = true; $("app").hidden = false;
+    if (!loadHash()) setDataset(DATASETS[0].name, true);
+    syncInputs(); renderDatasetChrome(); run();
+  } catch (e) {
+    $("boot").innerHTML = `<div class="err"><b>Couldn't load OpenFEMA.</b> ${esc(e.message)} <button class="btn" onclick="location.reload()">Try again</button></div>`;
+  }
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = DATASETS.map(d => {
+    const p = PROFILE[d.name] || {};
+    return `<button class="tab" role="tab" type="button" data-ds="${esc(d.name)}" aria-selected="false" title="${esc(p.blurb || d.title)}">
+      <b>${esc(p.short || d.title)}</b><span>${d.recordCount != null ? nf.format(d.recordCount) + " records" : ""} · v${esc(d.version)}</span></button>`;
+  }).join("");
+  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => { setDataset(b.dataset.ds); syncInputs(); renderDatasetChrome(); run(); });
+}
+
+function setDataset(name, keepNothing) {
+  const prevQ = S.q, prevDis = S.dis, prevSt = S.st;
+  S.ds = name; S.conds = []; S.page = 0; S.cols = null;
+  const p = prof();
+  S.sort = p.sort && fld(p.sort[0]) ? p.sort.slice() : (fields().find(f => f.kind === "date") ? [fields().find(f => f.kind === "date").name, "desc"] : null);
+  S.d1 = S.d2 = S.a1 = S.a2 = "";
+  // Keep the cross-dataset filters (search, disaster, state) when switching tabs
+  if (keepNothing) { S.q = ""; S.dis = ""; S.st = ""; } else { S.q = prevQ; S.dis = prevDis; S.st = prevSt; }
+}
+function visibleCols() {
+  const p = prof();
+  const want = S.cols || (p.cols ? p.cols.filter(n => fld(n)) : null);
+  if (want && want.length) return want;
+  return fields().filter(f => !META_COLS.has(f.name)).slice(0, 10).map(f => f.name);
+}
+
+function syncInputs() {
+  for (const k of ["q","dis","st","d1","d2","a1","a2"]) $(k).value = S[k];
+  $("size").value = String(S.size);
+}
+
+function renderDatasetChrome() {
+  const d = ds(), p = prof();
+  $("tabs").querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", String(b.dataset.ds === S.ds)));
+  const sf = searchFields();
+  $("qhint").textContent = sf.length ? "Looks in " + sf.map(n => fld(n).title.toLowerCase()).join(", ") + "." : "This dataset has no name or title field to search.";
+  $("q").disabled = !sf.length;
+  $("stateWrap").hidden = !stateField();
+  $("dis").closest(".field").hidden = !fld("disasterNumber");
+  const df = p.date && fld(p.date); $("dateWrap").hidden = !df; if (df) $("dateLbl").textContent = df.title;
+  const af = p.amount && fld(p.amount); $("amtWrap").hidden = !af; if (af) $("amtLbl").textContent = af.title;
+  if ($("st").options.length === 1) $("st").insertAdjacentHTML("beforeend", STATES.map(([a, n]) => `<option value="${a}">${esc(n)}</option>`).join(""));
+  // columns
+  const vis = new Set(visibleCols());
+  $("cols").innerHTML = fields().map(f => `<option value="${esc(f.name)}" ${vis.has(f.name) ? "selected" : ""}>${esc(f.title)}</option>`).join("");
+  // totals controls
+  const nums = fields().filter(f => f.kind === "number" && (isMoney(f) || /^number/i.test(f.name)));
+  $("sumField").innerHTML = `<option value="">Count of records</option>` + nums.map(f => `<option value="${esc(f.name)}" ${f.name === p.amount ? "selected" : ""}>${esc(f.title)}</option>`).join("");
+  const groupable = fields().filter(f => f.searchable && !META_COLS.has(f.name) && (f.kind === "text" || f.kind === "bool" || /disasterNumber|region|year/i.test(f.name)) && !/address|zip|description/i.test(f.name));
+  $("grpField").innerHTML = groupable.map(f => `<option value="${esc(f.name)}" ${f.name === p.group ? "selected" : ""}>${esc(f.title)}</option>`).join("");
+  $("sumOut").innerHTML = ""; $("sumProg").textContent = "OpenFEMA returns rows, not totals, so this pages through every matching record in your browser (up to 300,000 rows).";
+  // about
+  $("aboutTitle").textContent = "About " + d.title;
+  $("aboutMeta").innerHTML = [
+    `${nf.format(d.recordCount || 0)} records`, `version ${esc(d.version)}`,
+    d.lastDataSetRefresh ? `refreshed ${esc(fmtDate(d.lastDataSetRefresh))}` : "",
+    d.dataDictionary ? `<a href="${esc(d.dataDictionary)}" target="_blank" rel="noopener">FEMA data dictionary</a>` : "",
+    `<a href="${esc(d.webService)}?$top=5" target="_blank" rel="noopener">API endpoint</a>`,
+  ].filter(Boolean).map(s => `<span>${s}</span>`).join("");
+  $("aboutDesc").textContent = (d.description || "").replace(/\n{3,}/g, "\n\n").trim();
+  $("aboutFields").innerHTML = fields().map(f => `<div><code>${esc(f.name)}</code> · <b>${esc(f.title)}</b> <span class="hint">${esc(f.kind)}</span><p>${esc(f.description)}</p></div>`).join("");
+  renderConds();
+}
+
+/* ---------- condition builder ---------- */
+const OPS = {
+  text: [["contains", "contains"], ["eq", "is exactly"], ["ne", "is not"], ["startswith", "starts with"], ["in", "is one of (a, b, c)"]],
+  number: [["eq", "="], ["gt", ">"], ["ge", "≥"], ["lt", "<"], ["le", "≤"], ["ne", "≠"], ["in", "is one of (1, 2, 3)"]],
+  date: [["onafter", "on or after"], ["through", "on or before"], ["on", "on"], ["before", "before"]],
+  bool: [["eq", "is"]],
+};
+function condLabel(c) {
+  const f = fld(c.field); if (!f) return "";
+  const op = (OPS[f.kind].find(o => o[0] === c.op) || [, c.op])[1];
+  const v = f.kind === "date" ? fmtDate(c.value) : f.kind === "bool" ? (c.value === "true" ? "yes" : "no") : c.value;
+  return `${f.title} ${op} ${v}`;
+}
+function renderConds() {
+  const searchable = fields().filter(f => f.searchable);
+  $("conds").innerHTML = S.conds.map((c, i) => {
+    const f = fld(c.field) || searchable[0];
+    const ops = OPS[f.kind];
+    let input;
+    if (f.kind === "bool") input = `<select data-k="value" aria-label="Value"><option value="true" ${c.value === "true" ? "selected" : ""}>Yes</option><option value="false" ${c.value === "false" ? "selected" : ""}>No</option></select>`;
+    else if (f.kind === "date") input = `<input data-k="value" type="date" value="${esc(c.value)}" aria-label="Value">`;
+    else input = `<input data-k="value" type="${f.kind === "number" && c.op !== "in" ? "number" : "text"}" value="${esc(c.value)}" aria-label="Value" placeholder="value">`;
+    return `<div class="cond" data-i="${i}">
+      <select data-k="field" aria-label="Field">${searchable.map(x => `<option value="${esc(x.name)}" ${x.name === f.name ? "selected" : ""}>${esc(x.title)}</option>`).join("")}</select>
+      <button class="x" type="button" data-k="del" aria-label="Remove condition">×</button>
+      <div class="ops"><select data-k="op" aria-label="Operator">${ops.map(([v, l]) => `<option value="${v}" ${v === c.op ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>${input}</div>
+    </div>`;
+  }).join("");
+  $("conds").querySelectorAll(".cond").forEach(el => {
+    const i = +el.dataset.i;
+    el.querySelector('[data-k="del"]').onclick = () => { S.conds.splice(i, 1); renderConds(); S.page = 0; run(); };
+    el.querySelector('[data-k="field"]').onchange = (e) => { const f = fld(e.target.value); S.conds[i] = { field: f.name, op: OPS[f.kind][0][0], value: f.kind === "bool" ? "true" : "" }; renderConds(); };
+    el.querySelector('[data-k="op"]').onchange = (e) => { S.conds[i].op = e.target.value; renderConds(); };
+    const v = el.querySelector('[data-k="value"]');
+    v.oninput = v.onchange = (e) => { S.conds[i].value = e.target.value; };
+    v.onkeydown = (e) => { if (e.key === "Enter") { S.page = 0; run(); } };
+  });
+}
+
+/* ---------- search & table ---------- */
+function readInputs() { for (const k of ["q","dis","st","d1","d2","a1","a2"]) S[k] = $(k).value.trim(); }
+
+async function run() {
+  const seq = ++reqSeq;
+  saveHash();
+  const d = ds();
+  let url;
+  try { url = queryURL({ $top: S.size, $skip: S.page * S.size, $count: "true" }); }
+  catch (e) { showErr(e.message); return; }
+  $("apiurl").textContent = decodeURIComponent(url);
+  renderChips();
+  $("tablePanel").classList.add("loading");
+  try {
+    const j = await getJSON(url);
+    if (seq !== reqSeq) return;
+    lastCount = j.metadata?.count ?? 0;
+    renderTable(j[d.name] || []);
+  } catch (e) { if (seq === reqSeq) showErr(e.message); }
+  finally { if (seq === reqSeq) $("tablePanel").classList.remove("loading"); }
+}
+function showErr(msg) {
+  $("tablewrap").innerHTML = `<div class="empty"><div class="err"><b>That search didn't work.</b> ${esc(msg)} Change or remove the last condition and search again.</div></div>`;
+  $("count").innerHTML = "–"; $("pageInfo").textContent = "";
+}
+function renderChips() {
+  const chips = allConds().map(c => `<span class="chip">${esc(c.label)}<button type="button" data-rm='${esc(JSON.stringify(c))}' aria-label="Remove">×</button></span>`);
+  if (S.q.trim()) chips.unshift(`<span class="chip">“${esc(S.q.trim())}”<button type="button" data-rmq aria-label="Remove">×</button></span>`);
+  $("chips").innerHTML = chips.join("");
+  $("chips").querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (b.hasAttribute("data-rmq")) { S.q = ""; }
+    else {
+      const c = JSON.parse(b.dataset.rm);
+      if (c.idx != null) S.conds.splice(c.idx, 1);
+      else if (c.field === "disasterNumber" && c.op === "in") S.dis = "";
+      else if (c.op === "onafter") S.d1 = ""; else if (c.op === "through") S.d2 = "";
+      else if (c.op === "ge") S.a1 = ""; else if (c.op === "le") S.a2 = "";
+      else S.st = "";
+    }
+    S.page = 0; syncInputs(); renderConds(); run();
+  });
+}
+let ROWS = [];
+function renderTable(rows) {
+  ROWS = rows;
+  const cols = visibleCols().map(fld).filter(Boolean);
+  $("count").innerHTML = `${nf.format(lastCount)}<small>${lastCount === 1 ? "record" : "records"} match</small>`;
+  const from = lastCount ? S.page * S.size + 1 : 0, to = Math.min(lastCount, (S.page + 1) * S.size);
+  $("pageInfo").textContent = lastCount ? `Showing ${nf.format(from)}–${nf.format(to)} of ${nf.format(lastCount)}` : "";
+  $("prev").disabled = S.page === 0; $("next").disabled = to >= lastCount;
+  if (!rows.length) { $("tablewrap").innerHTML = `<div class="empty">No records match these filters. Remove a filter above, or check the spelling in your search.</div>`; return; }
+  const th = cols.map(f => {
+    const s = S.sort && S.sort[0] === f.name ? S.sort[1] : null;
+    return `<th data-f="${esc(f.name)}" class="${f.searchable ? "" : "nosort"}" title="${esc(f.description)}" ${s ? `aria-sort="${s === "asc" ? "ascending" : "descending"}"` : ""}>${esc(f.title)}${s ? `<span class="arr">${s === "asc" ? "▲" : "▼"}</span>` : ""}</th>`;
+  }).join("");
+  const tb = rows.map((r, i) => `<tr data-i="${i}" tabindex="0">${cols.map(f => `<td class="${cellClass(f)}">${esc(fmt(f, r[f.name]))}</td>`).join("")}</tr>`).join("");
+  $("tablewrap").innerHTML = `<table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table>`;
+  $("tablewrap").querySelectorAll("th").forEach(h => h.onclick = () => {
+    const f = fld(h.dataset.f); if (!f.searchable) return;
+    S.sort = S.sort && S.sort[0] === f.name ? [f.name, S.sort[1] === "desc" ? "asc" : "desc"] : [f.name, f.kind === "text" ? "asc" : "desc"];
+    S.page = 0; run();
+  });
+  $("tablewrap").querySelectorAll("tbody tr").forEach(tr => {
+    tr.onclick = () => openDrawer(ROWS[+tr.dataset.i]);
+    tr.onkeydown = (e) => { if (e.key === "Enter") openDrawer(ROWS[+tr.dataset.i]); };
+  });
+}
+
+/* ---------- record drawer with cross-dataset links ---------- */
+function hasField(dsName, n) { return (FIELDS[dsName] || []).find(f => f.name === n); }
+function openDrawer(r) {
+  const d = ds(), p = prof();
+  const titleField = ["applicationTitle", "projectTitle", "applicantName", "appellant"].find(n => r[n]);
+  $("dTitle").textContent = titleField ? r[titleField] : (p.short || d.title);
+  $("dSub").textContent = `${p.short || d.title}${r.disasterNumber ? " · Disaster " + r.disasterNumber : ""}${r.pwNumber ? " · PW " + r.pwNumber : ""}`;
+  const kv = fields().map(f => `<dt title="${esc(f.description)}">${esc(f.title)}</dt><dd class="${f.kind === "number" ? "n" : ""}">${esc(fmt(f, r[f.name], true)) || '<span class="hint">—</span>'}</dd>`).join("");
+  const links = [];
+  if (r.disasterNumber) {
+    const n = String(r.disasterNumber).replace(/\D/g, "");
+    links.push(`<p><a href="https://www.fema.gov/disaster/${esc(n)}" target="_blank" rel="noopener">Disaster ${esc(n)} on fema.gov</a></p>`);
+    const btns = DATASETS.filter(x => x.name !== d.name && hasField(x.name, "disasterNumber"))
+      .map(x => `<button class="btn" type="button" data-go="${esc(x.name)}" data-k="disaster" data-v="${esc(n)}">${esc((PROFILE[x.name] || {}).short || x.title)}</button>`);
+    if (btns.length) links.push(`<h4>This disaster in</h4><div class="actions">${btns.join("")}</div>`);
+  }
+  const appId = r.applicantId || r.applicantIdEmmie;
+  if (appId) {
+    const btns = DATASETS.filter(x => hasField(x.name, "applicantId") || hasField(x.name, "applicantIdEmmie"))
+      .map(x => `<button class="btn" type="button" data-go="${esc(x.name)}" data-k="applicant" data-v="${esc(appId)}" data-dn="${esc(r.disasterNumber ?? "")}">${esc((PROFILE[x.name] || {}).short || x.title)}</button>`);
+    links.push(`<h4>Applicant ${esc(appId)} in this disaster</h4><div class="actions">${btns.join("")}</div>`);
+  } else if (r.applicantName) {
+    const btns = DATASETS.filter(x => x.name !== d.name && hasField(x.name, "applicantName"))
+      .map(x => `<button class="btn" type="button" data-go="${esc(x.name)}" data-k="name" data-v="${esc(r.applicantName)}" data-dn="${esc(r.disasterNumber ?? "")}">${esc((PROFILE[x.name] || {}).short || x.title)}</button>`);
+    if (btns.length) links.push(`<h4>Same applicant name in this disaster</h4><div class="actions">${btns.join("")}</div>`);
+  }
+  $("dBody").innerHTML = (links.length ? `<div class="xlinks">${links.join("")}</div>` : "") + `<dl class="kv">${kv}</dl>`;
+  $("dBody").querySelectorAll("[data-go]").forEach(b => b.onclick = () => jump(b.dataset.go, b.dataset.k, b.dataset.v, b.dataset.dn));
+  $("drawer").hidden = false; $("scrim").hidden = false; $("dClose").focus();
+}
+function closeDrawer() { $("drawer").hidden = true; $("scrim").hidden = true; }
+function jump(dsName, kind, v, dn) {
+  setDataset(dsName, true);
+  if (kind === "disaster") S.dis = v;
+  else {
+    if (dn && hasField(dsName, "disasterNumber")) S.dis = dn;
+    if (kind === "applicant") { const f = hasField(dsName, "applicantId") ? "applicantId" : "applicantIdEmmie"; S.conds = [{ field: f, op: "eq", value: v }]; }
+    else S.conds = [{ field: "applicantName", op: "eq", value: v }];
+  }
+  closeDrawer(); syncInputs(); renderDatasetChrome(); run();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* ---------- paging through every match (totals and CSV) ---------- */
+async function* allRows(select, cap, signal) {
+  const d = ds(), PAGE = 10000;
+  for (let skip = 0; skip < cap; skip += PAGE) {
+    const extra = { $top: Math.min(PAGE, cap - skip), $skip: skip, $metadata: "off" };
+    if (select) extra.$select = select.join(",");
+    const j = await getJSON(queryURL(extra), signal);
+    const rows = j[d.name] || [];
+    yield rows;
+    if (rows.length < PAGE) return;
+  }
+}
+async function runTotals() {
+  const sumF = $("sumField").value, grpF = $("grpField").value;
+  const cap = 300000, d = ds();
+  if (!lastCount) { $("sumProg").textContent = "Nothing to add up: no records match."; return; }
+  sumAbort = new AbortController();
+  $("sumBtn").disabled = true; $("sumStop").hidden = false;
+  const groups = new Map(); let n = 0, total = 0;
+  const want = Math.min(lastCount, cap);
+  try {
+    for await (const rows of allRows([grpF, sumF].filter(Boolean), cap, sumAbort.signal)) {
+      for (const r of rows) {
+        const g = r[grpF] ?? "(blank)"; const v = sumF ? Number(r[sumF]) || 0 : 1;
+        n++; total += v;
+        const e = groups.get(g) || { v: 0, n: 0 }; e.v += v; e.n++; groups.set(g, e);
+      }
+      $("sumProg").textContent = `Read ${nf.format(n)} of ${nf.format(want)} records…`;
+    }
+    renderTotals(groups, n, total, sumF, grpF, lastCount > cap);
+  } catch (e) {
+    $("sumProg").textContent = e.name === "AbortError" ? `Stopped after ${nf.format(n)} records.` : "Couldn't finish: " + e.message;
+    if (e.name === "AbortError" && n) renderTotals(groups, n, total, sumF, grpF, true);
+  } finally { $("sumBtn").disabled = false; $("sumStop").hidden = true; sumAbort = null; }
+}
+function renderTotals(groups, n, total, sumF, grpF, partial) {
+  const sf = fld(sumF), gf = fld(grpF);
+  const valFmt = (v) => sf ? (isMoney(sf) ? money.format(v) : nf.format(v)) : nf.format(v);
+  const sorted = [...groups.entries()].sort((a, b) => b[1].v - a[1].v);
+  const top = sorted.slice(0, 25), max = top.length ? Math.max(...top.map(x => Math.abs(x[1].v))) : 1;
+  $("sumProg").textContent = partial ? `Partial: these totals cover the first ${nf.format(n)} matching records, not all of them.` : `Totals cover all ${nf.format(n)} matching records.`;
+  $("sumOut").innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><b>${esc(valFmt(total))}</b><span>${esc(sf ? sf.title : "Records")}${partial ? " (partial)" : ""}</span></div>
+      <div class="kpi"><b>${nf.format(n)}</b><span>records read</span></div>
+      <div class="kpi"><b>${nf.format(groups.size)}</b><span>distinct ${esc(gf.title.toLowerCase())}</span></div>
+    </div>
+    <div style="display:grid;gap:6px">
+      <h2>${esc(sf ? sf.title : "Records")} by ${esc(gf.title.toLowerCase())}${sorted.length > 25 ? ", top 25" : ""}</h2>
+      <div class="bars" role="list">${top.map(([g, e]) => {
+        const label = fmt(gf, g === "(blank)" ? "" : g) || "(blank)";
+        return `<button class="brow" role="listitem" type="button" data-g='${esc(JSON.stringify(g))}' title="${esc(label)}: ${esc(valFmt(e.v))} across ${nf.format(e.n)} records. Click to filter to it.">
+          <span class="lbl">${esc(label)}</span>
+          <span class="track"><span class="fill" style="width:${Math.max(0.5, Math.abs(e.v) / max * 78)}%"></span><span class="val">${esc(sf && isMoney(sf) ? "$" + compact.format(e.v) : compact.format(e.v))}</span></span>
+        </button>`;
+      }).join("")}</div>
+      <p class="hint">Click a bar to filter the table to that ${esc(gf.title.toLowerCase())}.</p>
+    </div>`;
+  $("sumOut").querySelectorAll(".brow").forEach(b => b.onclick = () => {
+    const g = JSON.parse(b.dataset.g); if (g === "(blank)") return;
+    S.conds.push({ field: grpF, op: "eq", value: gf.kind === "bool" ? String(g) : String(g) });
+    S.page = 0; renderConds(); run();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+function csvCell(v) {
+  if (v === null || v === undefined) return "";
+  let s = String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;           // keep spreadsheet apps from running it as a formula
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+async function exportCSV() {
+  const cap = 100000, btn = $("exportBtn"), d = ds();
+  if (!lastCount) return;
+  const cols = fields().map(f => f.name);
+  const lines = [cols.join(",")];
+  btn.disabled = true;
+  try {
+    for await (const rows of allRows(null, cap)) {
+      for (const r of rows) lines.push(cols.map(c => csvCell(r[c])).join(","));
+      btn.textContent = `Fetching ${nf.format(lines.length - 1)}…`;
+    }
+    const blob = new Blob([lines.join("\r\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${d.name}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    btn.textContent = lastCount > cap ? `Saved first ${nf.format(cap)} rows` : "Saved";
+  } catch (e) { btn.textContent = "Download failed"; alertInline(e.message); }
+  finally { btn.disabled = false; setTimeout(() => btn.textContent = "Download CSV", 3500); }
+}
+function alertInline(msg) { $("sumProg").textContent = msg; }
+
+/* ---------- wiring ---------- */
+function go() { readInputs(); S.page = 0; run(); }
+$("run").onclick = go;
+["q", "dis", "d1", "d2", "a1", "a2"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") go(); }));
+["st", "d1", "d2"].forEach(id => $(id).addEventListener("change", go));
+$("reset").onclick = () => { setDataset(S.ds, true); syncInputs(); renderDatasetChrome(); run(); };
+$("addCond").onclick = () => { const f = fields().find(x => x.searchable && x.kind === "text") || fields()[0]; S.conds.push({ field: f.name, op: OPS[f.kind][0][0], value: "" }); renderConds(); const v = $("conds").querySelectorAll('[data-k="value"]'); v[v.length - 1]?.focus(); };
+$("cols").onchange = () => { S.cols = [...$("cols").selectedOptions].map(o => o.value); if (!S.cols.length) S.cols = null; saveHash(); renderTable(ROWS); };
+$("size").onchange = () => { S.size = +$("size").value; S.page = 0; run(); };
+$("prev").onclick = () => { if (S.page > 0) { S.page--; run(); } };
+$("next").onclick = () => { S.page++; run(); };
+$("sumBtn").onclick = runTotals;
+$("sumStop").onclick = () => sumAbort?.abort();
+$("exportBtn").onclick = exportCSV;
+$("copyUrl").onclick = async () => {
+  const t = $("apiurl").textContent;
+  try { await navigator.clipboard.writeText(t); $("copyUrl").textContent = "Copied"; }
+  catch { const r = document.createRange(); r.selectNodeContents($("apiurl")); getSelection().removeAllRanges(); getSelection().addRange(r); $("copyUrl").textContent = "Selected"; }
+  setTimeout(() => $("copyUrl").textContent = "Copy API link", 2000);
+};
+$("dClose").onclick = closeDrawer; $("scrim").onclick = closeDrawer;
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("drawer").hidden) closeDrawer(); });
+boot();
+</script>
+</body>
+</html>
